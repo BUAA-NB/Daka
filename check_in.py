@@ -40,21 +40,26 @@ checkinPlayload = {
 }
 
 # 检查当前是否是该打卡的时间
-def checkTime():
+def checkMorning():
     # 早7-9
     moringBegin = datetime.time(7,0,0)
     moringEnd = datetime.time(9,0,0)
+    now = datetime.datetime.now().time()
+    return moringBegin <= now <= moringEnd
+
+def checkNoon():
     # 午11-13
     noonBegin = datetime.time(11,0,0)
     noonEnd = datetime.time(13,0,0)
+    now = datetime.datetime.now().time()
+    return noonBegin <= now <= noonEnd
+
+def checkNight():
     # 晚18-20
     nightBegin = datetime.time(18,0,0)
     nightEnd = datetime.time(20,0,0)
-
     now = datetime.datetime.now().time()
-    return moringBegin <= now <= moringEnd \
-        or noonBegin <= now <= noonEnd \
-        or nightBegin <= now <= nightEnd
+    return nightBegin <= now <= nightEnd
 
 
 def sendSC(text, desp, key):
@@ -108,30 +113,57 @@ def checkin():
     respStr = rep.content.decode()
     if rep.status_code == 200:
         respDict = eval(respStr)
-        print(rep, rep.content.decode(), '\nDone.\n\n')
+        print(rep, rep.content.decode(), '\nDone.')
         if "e" in respDict:
             if respDict["e"] == 0:
                 sendSC('打卡成功！', respDict["m"], config.SCKey)
+            elif respDict["m"] == '您已上报过':
+                sendSC('重复打卡！', respDict["m"], config.SCKey)
             else:
                 raise Exception(respDict["m"])
     else:
         raise Exception(respStr)
 
+def tryCheckin():
+    for i in range(5):
+        try:
+            checkin()
+            return True
+        except Exception as err:
+            print(err)
+            sendSC('打卡失败！', err, config.SCKey)
+            time.sleep(60) # 60s后重试
+    return False
 
 def main():
+    date = datetime.datetime.now().date()
+    morningDone = False
+    noonDone = False
+    nightDone = False
     while True:
-        if checkTime():
-            # 到打卡时间了，
-            for i in range(5):
-                try:
-                    checkin()
-                    break
-                except Exception as err:
-                    print(err)
-                    sendSC('打卡失败！', err, config.SCKey)
-                    time.sleep(60) # 60s后重试
+        nowDate = datetime.datetime.now().date()
+        if nowDate > date:
+            # 新的一天
+            date = nowDate
+            morningDone = False
+            noonDone = False
+            nightDone = False
+        
+        # 到打卡时间了
+        if not morningDone and checkMorning():
+            print('早晨打卡啦~')
+            morningDone = tryCheckin()
+        if not noonDone and checkNoon():
+            print('中午打卡啦~')
+            noonDone = tryCheckin()
+        if not nightDone and checkNight():
+            print('晚上打卡啦~')
+            nightDone = tryCheckin()
+        
         # 随机休眠5-30分钟
-        time.sleep(random.randint(5*60, 30*60))
+        sleepTime = random.randint(5, 30)
+        print('休眠%d分钟后重试' % sleepTime)
+        time.sleep(sleepTime * 60)
 
 if __name__ == '__main__':
     main()
